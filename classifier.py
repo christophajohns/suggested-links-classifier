@@ -13,9 +13,17 @@ initial_training_data = [
                 "g": 0.61,
                 "b": 0.86,
             },
+            "characters": "More details",
         },
         "target": {
             "id": "23:12",
+            "topics": [
+                "design",
+                "technology",
+                "shape",
+                "detail",
+                "classic",
+            ],
         },
         "is_link": True,
     },
@@ -27,9 +35,61 @@ initial_training_data = [
                 "g": 0,
                 "b": 0,
             },
+            "characters": "Shopping Bag",
         },
         "target": {
             "id": "23:12",
+            "topics": [
+                "total",
+                "price",
+                "checkout",
+                "order",
+                "shopping",
+            ],
+        },
+        "is_link": True,
+    },
+    {
+        "source": {
+            "id": "23:11",
+            "color": {
+                "r": 0.05,
+                "g": 0.05,
+                "b": 0.05,
+            },
+            "characters": "Development",
+        },
+        "target": {
+            "id": "23:12",
+            "topics": [
+                "history",
+                "about",
+                "team",
+                "contact",
+                "headquarters",
+            ],
+        },
+        "is_link": False,
+    },
+    {
+        "source": {
+            "id": "23:13",
+            "color": {
+                "r": 0.51,
+                "g": 0.51,
+                "b": 0.51,
+            },
+            "characters": "Lorem ipsum dolor sit amet",
+        },
+        "target": {
+            "id": "23:14",
+            "topics": [
+                "home",
+                "cloud",
+                "technique",
+                "painting",
+                "house",
+            ],
         },
         "is_link": False,
     },

@@ -1,3 +1,7 @@
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+
 def valid_data(sources_and_targets):
     """Returns True if the provided input data can be processed by the classifier.
 
@@ -98,24 +102,45 @@ def qualifications(sources_and_targets, classifier):
             )
             source_target_scores.append(link_probability)
         qualifications.append(source_target_scores)
-    print(qualifications)
     return {"qualifications": qualifications}
+
+
+def get_semantic_similarity(source_content, target_topics):
+    # TODO: Add semantic similarity comparison
+    corpus = [source_content, " ".join(target_topics)]
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(corpus)
+    semantic_similarity = cosine_similarity(X[0:1], X)[0][1]
+    return semantic_similarity
 
 
 def feature_vector(source, target):
     # TODO: Add preprocessor
     source_color = source["color"]
-    return list(source_color.values())
+    x = [color_value for color_value in source_color.values()]
+    source_content = source["characters"]
+    target_content = target["topics"]
+    semantic_similarity = get_semantic_similarity(source_content, target_content)
+    x.append(semantic_similarity)
+    return x
 
 
 def get_link_probability(
-    source, target, penalty_score, classifier, qualification_threshold=0.5
+    source, target, penalty_score, classifier, qualification_threshold=0.7
 ):
     if source["parentId"] == target["id"]:
         return penalty_score
     sample = feature_vector(source, target)
     prediction = classifier.predict_proba([sample])[0]
     link_probability = prediction[1]
+    # print(
+    #     {
+    #         "source": source["name"],
+    #         "target": target["name"],
+    #         "features": sample,
+    #         "proba": link_probability,
+    #     }
+    # )
     return (
         link_probability
         if link_probability > qualification_threshold
