@@ -1,2 +1,2 @@
 export FLASK_APP=app.py
-flask run
+flask run -p 3000
