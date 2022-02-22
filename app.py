@@ -1,7 +1,9 @@
 from flask import Flask, request
 from utils import valid_data, qualifications
+from joblib import load
 
 app = Flask(__name__)
+clf = load("classifier.joblib")
 
 
 @app.route("/")
@@ -17,6 +19,6 @@ def index():
 @app.route("/qualifications", methods=["POST"])
 def links():
     if valid_data(request.json):
-        return qualifications(request.json)
+        return qualifications(request.json, clf)
     else:
         return {"qualifications": []}

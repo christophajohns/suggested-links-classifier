@@ -85,7 +85,7 @@ def valid_data(sources_and_targets):
     return True
 
 
-def qualifications(sources_and_targets):
+def qualifications(sources_and_targets, classifier):
     sources = sources_and_targets["sources"]
     targets = sources_and_targets["targets"]
     penalty_score = len(sources) * len(targets) * -1
@@ -93,15 +93,31 @@ def qualifications(sources_and_targets):
     for source in sources:
         source_target_scores = []
         for target in targets:
-            link_probability = get_link_probability(source, target, penalty_score)
+            link_probability = get_link_probability(
+                source, target, penalty_score, classifier
+            )
             source_target_scores.append(link_probability)
         qualifications.append(source_target_scores)
     print(qualifications)
     return {"qualifications": qualifications}
 
 
-def get_link_probability(source, target, penalty_score):
-    print(source, target)
+def feature_vector(source, target):
+    # TODO: Add preprocessor
+    source_color = source["color"]
+    return list(source_color.values())
+
+
+def get_link_probability(
+    source, target, penalty_score, classifier, qualification_threshold=0.5
+):
     if source["parentId"] == target["id"]:
         return penalty_score
-    return 0.5
+    sample = feature_vector(source, target)
+    prediction = classifier.predict_proba([sample])[0]
+    link_probability = prediction[1]
+    return (
+        link_probability
+        if link_probability > qualification_threshold
+        else penalty_score
+    )
