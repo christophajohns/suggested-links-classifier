@@ -1,4 +1,7 @@
+from joblib import dump, load
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import SGDClassifier
 from sklearn.metrics.pairwise import cosine_similarity
 
 
@@ -146,3 +149,27 @@ def get_link_probability(
         if link_probability > qualification_threshold
         else penalty_score
     )
+
+
+def get_classifier_path(model_id):
+    return f"classifiers/{model_id}.joblib"
+
+
+def create_classifier(model_id):
+    clf = SGDClassifier(loss="log")
+    clf_path = get_classifier_path(model_id)
+    dump(clf, clf_path)
+
+
+def update_classifier(link_and_label, model_id):
+    clf_path = get_classifier_path(model_id)
+    clf = load(clf_path)
+    X = []
+    is_link = link_and_label["isLink"]
+    source = link_and_label["link"]["source"]
+    target = link_and_label["link"]["target"]
+    input_features = feature_vector(source, target)
+    X = np.array([input_features])
+    y = np.array([(int(is_link))])
+    clf.partial_fit(X, y, classes=[0, 1])
+    dump(clf, clf_path)
