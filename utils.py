@@ -1,3 +1,4 @@
+from colorsys import rgb_to_hls
 from joblib import dump, load
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -119,8 +120,11 @@ def get_semantic_similarity(source_content, target_topics):
 
 def feature_vector(source, target):
     # TODO: Add preprocessor
-    source_color = source["color"]
-    x = [color_value for color_value in source_color.values()]
+    source_color_rgb = source["color"]
+    [hue, lightness, saturation] = rgb_to_hls(
+        source_color_rgb["r"], source_color_rgb["g"], source_color_rgb["b"]
+    )
+    x = [hue, saturation, lightness]
     source_content = source["characters"]
     target_content = target["topics"]
     semantic_similarity = get_semantic_similarity(source_content, target_content)
@@ -129,7 +133,7 @@ def feature_vector(source, target):
 
 
 def get_link_probability(
-    source, target, penalty_score, classifier, qualification_threshold=0.7
+    source, target, penalty_score, classifier, qualification_threshold=0.5
 ):
     if source["parentId"] == target["id"]:
         return penalty_score
@@ -147,7 +151,7 @@ def get_link_probability(
     return (
         link_probability
         if link_probability > qualification_threshold
-        else penalty_score
+        else link_probability - qualification_threshold
     )
 
 
