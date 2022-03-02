@@ -3,7 +3,7 @@ from joblib import dump, load
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import linear_kernel
 
 
 def valid_data(sources_and_targets):
@@ -122,10 +122,11 @@ def get_semantic_similarity(source_content, target_topics, application_context):
     # corpus = [source_content, " ".join(target_topics)]
     vectorizer = TfidfVectorizer()
     try:
-        X = vectorizer.fit_transform(application_context)
-        source_vector = vectorizer.transform(source_content)
-        target_vector = vectorizer.transform(target_topics)
-        semantic_similarity = cosine_similarity(source_vector, target_vector)[0][1]
+        all_texts = [" ".join(page_content) for page_content in application_context]
+        X = vectorizer.fit_transform(all_texts)
+        source_vector = vectorizer.transform([source_content])
+        target_vector = vectorizer.transform([" ".join(target_topics)])
+        semantic_similarity = linear_kernel(source_vector, target_vector).flatten()[0]
         return semantic_similarity
     except Exception as e:
         # print(e, source_content, target_topics)
@@ -174,7 +175,7 @@ def get_classifier_path(model_id):
 
 
 def create_classifier(model_id):
-    clf = SGDClassifier(loss="log", class_weight="balanced")
+    clf = SGDClassifier(loss="log")
     clf_path = get_classifier_path(model_id)
     dump(clf, clf_path)
 

@@ -1,0 +1,118 @@
+from pprint import pprint
+from utils import feature_vector
+
+data = {'context': [['Combining the best of design and technology, this unique shape '
+               'has become the unmistakable brand icon over time. The keyhole '
+               'bridge, legendary arrow and Meflecto system are the details '
+               'that have made this model a timeless classic. \n'
+               '\n'
+               'Originally designed in 1957 for Turin tram-drivers, 649 soon '
+               'rose from its functional beginnings. Then became a legend when '
+               'Marcello Mastroianni wore it in the classic Divorce, Italian '
+               'Style.',
+               '649 – Original',
+               'Persol',
+               '$261.00',
+               'Classics',
+               'To Shopping Bag'],
+              [],
+              ['649 – Original',
+               'Persol',
+               '$261.00',
+               'Combining the best of design and technology, this unique shape '
+               'has become the unmistakable brand icon over time...',
+               'More details',
+               'Wayfarer',
+               'Ray-Ban',
+               '$163.00',
+               'Ray-Ban Original Wayfarer Classics are the most recognizable '
+               'style in the history of sunglasses. Since its initial design '
+               'in 1952...',
+               'More details',
+               'Home',
+               'Classics'],
+              ['SHAEDS',
+               'Classics',
+               'See all',
+               '649 – Original',
+               'Persol',
+               '$261.00',
+               'Combining the best of design and technology, this unique shape '
+               'has become the unmi...',
+               'More details',
+               'Wayfarer',
+               'Ray-Ban',
+               '$163.00',
+               'Ray-Ban Original Wayfarer Classics are the most recognizable '
+               'style in the ...',
+               'More details',
+               'FW2023',
+               'See all',
+               '649 – Original',
+               'Persol',
+               '$261.00',
+               'Combining the best of design and technology, this unique shape '
+               'has become the unmi...',
+               'More details',
+               'Wayfarer',
+               'Ray-Ban',
+               '$163.00',
+               'Ray-Ban Original Wayfarer Classics are the most recognizable '
+               'style in the ...',
+               'More details'],
+              ['Order Subtotal',
+               '$424.00',
+               'Standard Shipping',
+               'Free',
+               'Total',
+               '$424.00',
+               '649 – Original',
+               'Persol',
+               '$261.00',
+               'Wayfarer',
+               'Ray-Ban',
+               '$163.00',
+               'To Checkout',
+               'Back',
+               'Order Details',
+               'Delivery Location',
+               '2337 Strosin Prairie',
+               '85335, Hermannport',
+               'Payment Method',
+               'VISA Classic',
+               '****–0720',
+               'Details',
+               'Shopping Bag']],
+  'source': {'characters': 'To Shopping Bag',
+             'color': {'b': 1, 'g': 1, 'r': 1},
+             'id': '69:14',
+             'name': 'To Shopping Bag',
+             'parentId': '69:8'},
+  'target': {'id': '69:9',
+             'name': 'Shopping Bag',
+             'topics': ['Order Subtotal',
+                        '$424.00',
+                        'Standard Shipping',
+                        'Free',
+                        'Total',
+                        '$424.00',
+                        '649 – Original',
+                        'Persol',
+                        '$261.00',
+                        'Wayfarer',
+                        'Ray-Ban',
+                        '$163.00',
+                        'To Checkout',
+                        'Back',
+                        'Order Details',
+                        'Delivery Location',
+                        '2337 Strosin Prairie',
+                        '85335, Hermannport',
+                        'Payment Method',
+                        'VISA Classic',
+                        '****–0720',
+                        'Details',
+                        'Shopping Bag']}}
+
+x = feature_vector(data['source'], data['target'], data['context'])
+pprint(x)
