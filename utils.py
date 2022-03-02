@@ -90,35 +90,49 @@ def valid_data(sources_and_targets):
             if not isinstance(topic, str):
                 print(f"Should be str: 'targets[{index}]['topics'][{topic_index}]'")
                 return False
+    if not "context" in sources_and_targets:
+        print("Missing key: 'context'")
+        return False
+    context = sources_and_targets["context"]
+    if not isinstance(context, list):
+        print("Should be list: 'context'")
+        return False
     return True
 
 
 def qualifications(sources_and_targets, classifier):
     sources = sources_and_targets["sources"]
     targets = sources_and_targets["targets"]
+    context = sources_and_targets["context"]
     penalty_score = len(sources) * len(targets) * -1
     qualifications = []
     for source in sources:
         source_target_scores = []
         for target in targets:
             link_probability = get_link_probability(
-                source, target, penalty_score, classifier
+                source, target, context, penalty_score, classifier
             )
             source_target_scores.append(link_probability)
         qualifications.append(source_target_scores)
     return {"qualifications": qualifications}
 
 
-def get_semantic_similarity(source_content, target_topics):
+def get_semantic_similarity(source_content, target_topics, application_context):
     # TODO: Add semantic similarity comparison
-    corpus = [source_content, " ".join(target_topics)]
+    # corpus = [source_content, " ".join(target_topics)]
     vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(corpus)
-    semantic_similarity = cosine_similarity(X[0:1], X)[0][1]
-    return semantic_similarity
+    try:
+        X = vectorizer.fit_transform(application_context)
+        source_vector = vectorizer.transform(source_content)
+        target_vector = vectorizer.transform(target_topics)
+        semantic_similarity = cosine_similarity(source_vector, target_vector)[0][1]
+        return semantic_similarity
+    except Exception as e:
+        # print(e, source_content, target_topics)
+        return 0.0
 
 
-def feature_vector(source, target):
+def feature_vector(source, target, application_context):
     # TODO: Add preprocessor
     source_color_rgb = source["color"]
     [hue, lightness, saturation] = rgb_to_hls(
@@ -127,17 +141,17 @@ def feature_vector(source, target):
     x = [hue, saturation, lightness]
     source_content = source["characters"]
     target_content = target["topics"]
-    semantic_similarity = get_semantic_similarity(source_content, target_content)
+    semantic_similarity = get_semantic_similarity(source_content, target_content, application_context)
     x.append(semantic_similarity)
     return x
 
 
 def get_link_probability(
-    source, target, penalty_score, classifier, qualification_threshold=0.5
+    source, target, context, penalty_score, classifier, qualification_threshold=0.5
 ):
     if source["parentId"] == target["id"]:
         return penalty_score
-    sample = feature_vector(source, target)
+    sample = feature_vector(source, target, context)
     prediction = classifier.predict_proba([sample])[0]
     link_probability = prediction[1]
     # print(
@@ -160,7 +174,7 @@ def get_classifier_path(model_id):
 
 
 def create_classifier(model_id):
-    clf = SGDClassifier(loss="log")
+    clf = SGDClassifier(loss="log", class_weight="balanced")
     clf_path = get_classifier_path(model_id)
     dump(clf, clf_path)
 
@@ -168,11 +182,11 @@ def create_classifier(model_id):
 def update_classifier(link_and_label, model_id):
     clf_path = get_classifier_path(model_id)
     clf = load(clf_path)
-    X = []
     is_link = link_and_label["isLink"]
     source = link_and_label["link"]["source"]
     target = link_and_label["link"]["target"]
-    input_features = feature_vector(source, target)
+    context = link_and_label["link"]["context"]
+    input_features = feature_vector(source, target, context)
     X = np.array([input_features])
     y = np.array([(int(is_link))])
     clf.partial_fit(X, y, classes=[0, 1])
