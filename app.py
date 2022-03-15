@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, abort
 from sklearn.exceptions import NotFittedError
 from utils import valid_data, qualifications, update_classifier, create_classifier
 from joblib import load
@@ -23,7 +23,7 @@ def get_qualifications():
     if valid_data(request.json):
         return qualifications(request.json, static_classifier)
     else:
-        return {"qualifications": []}
+        abort(400)
 
 
 @app.route("/model/<model_id>/qualifications", methods=["POST"])
@@ -39,7 +39,7 @@ def get_qualifications_from_interactive_model(model_id):
         create_classifier(model_id)
         return qualifications(request.json, static_classifier)
     else:
-        return {"qualifications": []}
+        abort(400)
 
 
 @app.route("/model/<model_id>/update", methods=["POST"])
