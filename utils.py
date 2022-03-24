@@ -1,164 +1,127 @@
-from colorsys import rgb_to_hls
 from joblib import dump, load
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import SGDClassifier
-from sklearn.metrics.pairwise import linear_kernel
+from sklearn.ensemble import RandomForestClassifier
+from simplifiedscreen2vec.simplified_embedding import (
+    get_figma_component_embedding,
+    get_figma_embedding,
+    load_bert,
+    load_ui_model,
+    load_screen_model,
+    load_layout_model,
+)
+from constants import (
+    SOURCES,
+    TARGETS,
+    PAGES,
+    ID,
+    TYPE,
+    BOUNDS,
+    X,
+    Y,
+    WIDTH,
+    HEIGHT,
+    CHILDREN,
+)
+
+bert = load_bert()
+ui_model = load_ui_model(
+    "../Screen2Vec/simplifiedscreen2vec/UI2Vec_model.ep120", bert=bert
+)
+screen_model = load_screen_model(
+    "../Screen2Vec/simplifiedscreen2vec/Screen2Vec_model_v4.ep120"
+)
+layout_model = load_layout_model(
+    "../Screen2Vec/simplifiedscreen2vec/layout_encoder.ep800"
+)
 
 
-def valid_data(sources_and_targets):
-    """Returns True if the provided input data can be processed by the classifier.
+def validate_data(pages_data: dict):
+    """Raises an error if the provided input data cannot be processed by the classifier.
 
-    :param sources_and_targets: Information about potential source elements and target pages in JSON format
-    :type sources_and_targets: dict
+    :param pages_data: Information about the application's pages in JSON format
+    :type pages_data: dict
     """
-    # TODO: Add validation
-    if not "sources" in sources_and_targets:
-        print("Missing key: 'sources'")
-        return False
-    sources = sources_and_targets["sources"]
-    if not isinstance(sources, list):
-        print("Should be list: 'sources'")
-        return False
-    if not len(sources) > 0:
-        print("Should have length greater 0: 'sources'")
-        return False
-    for index, source in enumerate(sources):
-        if not isinstance(source, dict):
-            print(f"Should be dict: 'sources[{index}]'")
-            return False
-        if not "id" in source:
-            print(f"Missing key: 'id' in 'sources[{index}]'")
-            return False
-        if not "parentId" in source:
-            print(f"Missing key: 'parentId' in 'sources[{index}]'")
-            return False
-        if not "characters" in source:
-            print(f"Missing key: 'characters' in 'sources[{index}]'")
-            return False
-        if not "color" in source:
-            print(f"Missing key: 'color' in 'sources[{index}]'")
-            return False
-        color = source["color"]
-        if not isinstance(color, dict):
-            print(f"Should be dict: 'sources[{index}]['color']'")
-            return False
-        for color_variable in ["r", "g", "b"]:
-            if not color_variable in color:
-                print(f"Missing key: '{color_variable}' in 'sources[{index}]['color']'")
-                return False
-            if not isinstance(color[color_variable], float) and not isinstance(
-                color[color_variable], int
-            ):
-                print(f"Should be float: 'sources[{index}]['color'][{color_variable}]'")
-                return False
-            if not color[color_variable] >= 0:
-                print(
-                    f"Should be greater or equal 0: 'sources[{index}]['color'][{color_variable}]'"
-                )
-                return False
-            if not color[color_variable] <= 1:
-                print(
-                    f"Should be less than or equal 1: 'sources[{index}]['color'][{color_variable}]'"
-                )
-                return False
-    if not "targets" in sources_and_targets:
-        print("Missing key: 'targets'")
-        return False
-    targets = sources_and_targets["targets"]
-    if not isinstance(targets, list):
-        print("Should be list: 'targets'")
-        return False
-    if not len(targets) > 1:
-        print("Should have length greater 1: 'sources'")
-        return False
-    for index, target in enumerate(targets):
-        if not isinstance(target, dict):
-            print(f"Should be dict: 'targets[{index}]'")
-            return False
-        if not "id" in target:
-            print(f"Missing key: 'id' in 'sources[{index}]'")
-            return False
-        if not "topics" in target:
-            print(f"Missing key: 'topics' in 'sources[{index}]'")
-            return False
-        topics = target["topics"]
-        if not isinstance(topics, list):
-            print(f"Should be list: 'targets[{index}]['topics']'")
-            return False
-        for topic_index, topic in enumerate(topics):
-            if not isinstance(topic, str):
-                print(f"Should be str: 'targets[{index}]['topics'][{topic_index}]'")
-                return False
-    if not "context" in sources_and_targets:
-        print("Missing key: 'context'")
-        return False
-    context = sources_and_targets["context"]
-    if not isinstance(context, list):
-        print("Should be list: 'context'")
-        return False
-    return True
+
+    def validate_node(node: dict):
+        for key in [ID, TYPE, BOUNDS]:
+            if not key in node:
+                print(node)
+                raise Exception(f"Missing key: {key}")
+        for key in [X, Y, WIDTH, HEIGHT]:
+            if not key in node[BOUNDS]:
+                print(node)
+                raise Exception(f"Missing key: {key}")
+        if CHILDREN in node:
+            for child in node[CHILDREN]:
+                validate_node(child)
+
+    if not isinstance(pages_data, dict):
+        raise Exception(f"Should be dict: pages_data")
+    if not PAGES in pages_data:
+        raise Exception(f"Missing key: {PAGES}")
+    pages = pages_data[PAGES]
+    if not isinstance(pages, list):
+        raise Exception(f"Should be list: {PAGES}")
+    for page_index, page in enumerate(pages):
+        if not isinstance(page, dict):
+            raise Exception(f"Should be dict: {PAGES}[{page_index}]")
+        for key in [ID, WIDTH, HEIGHT, CHILDREN]:
+            if not key in page:
+                raise Exception(f"Missing key: {key} in {PAGES}[{page_index}]")
+        for child in page[CHILDREN]:
+            validate_node(child)
 
 
-def qualifications(sources_and_targets, classifier):
-    sources = sources_and_targets["sources"]
-    targets = sources_and_targets["targets"]
-    context = sources_and_targets["context"]
+def qualifications(pages_data, classifier):
+    pages = pages_data["pages"]
+    embeddings = [
+        get_figma_embedding(page, ui_model, screen_model, layout_model, bert)
+        for page in pages
+    ]
+    targets = [
+        {"id": pages[page_index]["id"], "embedding": embedding["screen"].tolist()}
+        for page_index, embedding in enumerate(embeddings)
+    ]
+    sources = [
+        {
+            "id": component_id,
+            "parent_id": pages[page_index]["id"],
+            "embedding": component_embedding.tolist(),
+        }
+        for page_index, embedding in enumerate(embeddings)
+        for component_id, component_embedding in embedding["components"].items()
+        if component_id
+        != pages[page_index][
+            "id"
+        ]  # first component is page itself (needs to be excluded)
+    ]
     penalty_score = len(sources) * len(targets) * -1
     qualifications = []
     for source in sources:
         source_target_scores = []
         for target in targets:
             link_probability = get_link_probability(
-                source, target, context, penalty_score, classifier
+                source, target, penalty_score, classifier
             )
-            source_target_scores.append(link_probability)
+            source_target_scores.append(
+                {"source": source, "target": target, "probability": link_probability}
+            )
         qualifications.append(source_target_scores)
     return {"qualifications": qualifications}
 
 
-def get_semantic_similarity(source_content, target_topics, application_context):
-    # TODO: Add semantic similarity comparison
-    # corpus = [source_content, " ".join(target_topics)]
-    vectorizer = TfidfVectorizer()
-    try:
-        all_texts = [" ".join(page_content) for page_content in application_context]
-        X = vectorizer.fit_transform(all_texts)
-        source_vector = vectorizer.transform([source_content])
-        target_vector = vectorizer.transform([" ".join(target_topics)])
-        semantic_similarity = linear_kernel(source_vector, target_vector).flatten()[0]
-        return semantic_similarity
-    except Exception as e:
-        # print(e, source_content, target_topics)
-        return 0.0
-
-
-def feature_vector(source, target, application_context):
-    # TODO: Add preprocessor
-    source_color_rgb = source["color"]
-    [hue, lightness, saturation] = rgb_to_hls(
-        source_color_rgb["r"], source_color_rgb["g"], source_color_rgb["b"]
-    )
-    x = [hue, saturation, lightness]
-    source_content = source["characters"]
-    target_content = target["topics"]
-    semantic_similarity = get_semantic_similarity(source_content, target_content, application_context)
-    x.append(semantic_similarity)
-    return x
-
-
 def get_link_probability(
-    source, target, context, penalty_score, classifier, qualification_threshold=0.5
+    source, target, penalty_score, classifier, qualification_threshold=0.5
 ):
-    if source["parentId"] == target["id"]:
+    if source["parent_id"] == target["id"]:
         return penalty_score
-    sample = feature_vector(source, target, context)
+    sample = source["embedding"] + target["embedding"]
     prediction = classifier.predict_proba([sample])[0]
     link_probability = prediction[1]
     # print(
     #     {
-    #         "source": source["name"],
-    #         "target": target["name"],
+    #         "source": source["id"],
+    #         "target": target["id"],
     #         "features": sample,
     #         "proba": link_probability,
     #     }
@@ -175,7 +138,7 @@ def get_classifier_path(model_id):
 
 
 def create_classifier(model_id):
-    clf = SGDClassifier(loss="log")
+    clf = RandomForestClassifier(random_state=42, n_jobs=2)
     clf_path = get_classifier_path(model_id)
     dump(clf, clf_path)
 
@@ -184,11 +147,21 @@ def update_classifier(link_and_label, model_id):
     clf_path = get_classifier_path(model_id)
     clf = load(clf_path)
     is_link = link_and_label["isLink"]
-    source = link_and_label["link"]["source"]
-    target = link_and_label["link"]["target"]
-    context = link_and_label["link"]["context"]
-    input_features = feature_vector(source, target, context)
-    X = np.array([input_features])
+    source_page = link_and_label["link"]["sourcePage"]
+    source_id = link_and_label["link"]["sourceId"]
+    target_page = link_and_label["link"]["target"]
+    source_page_embedding = get_figma_embedding(
+        source_page, ui_model, screen_model, layout_model, bert
+    )
+    source_embedding = [
+        component_embedding
+        for component_id, component_embedding in source_page_embedding["components"]
+        if component_id == source_id
+    ][0]
+    target_embedding = get_figma_embedding(
+        target_page, ui_model, screen_model, layout_model, bert
+    )
+    X = np.array(source_embedding.tolist() + target_embedding.tolist())
     y = np.array([(int(is_link))])
     clf.partial_fit(X, y, classes=[0, 1])
     dump(clf, clf_path)

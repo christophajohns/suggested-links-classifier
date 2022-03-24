@@ -1,6 +1,6 @@
 from flask import Flask, request, abort
 from sklearn.exceptions import NotFittedError
-from utils import valid_data, qualifications, update_classifier, create_classifier
+from utils import validate_data, qualifications, update_classifier, create_classifier
 from joblib import load
 from os.path import exists
 
@@ -20,16 +20,19 @@ def index():
 
 @app.route("/qualifications", methods=["POST"])
 def get_qualifications():
-    if valid_data(request.json):
+    try:
+        validate_data(request.json)
         return qualifications(request.json, static_classifier)
-    else:
+    except Exception as error:
+        print(error)
         abort(400)
 
 
 @app.route("/model/<model_id>/qualifications", methods=["POST"])
 def get_qualifications_from_interactive_model(model_id):
     classifier_path = f"classifiers/{model_id}.joblib"
-    if valid_data(request.json):
+    try:
+        validate_data(request.json)
         if exists(classifier_path):
             interactive_classifier = load(classifier_path)
             try:
@@ -38,7 +41,8 @@ def get_qualifications_from_interactive_model(model_id):
                 return qualifications(request.json, static_classifier)
         create_classifier(model_id)
         return qualifications(request.json, static_classifier)
-    else:
+    except Exception as error:
+        print(error)
         abort(400)
 
 

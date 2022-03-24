@@ -154,3 +154,10 @@ cython_debug/
 # User models
 classifiers/
 !classifiers/static.joblib
+
+# .DS_Store
+**/*/.DS_Store
+.DS_Store
+
+# Training data
+*.npy
