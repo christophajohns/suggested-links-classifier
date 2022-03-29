@@ -1,6 +1,7 @@
 from joblib import dump, load
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import SGDClassifier
 from simplifiedscreen2vec.simplified_embedding import (
     get_figma_component_embedding,
     get_figma_embedding,
@@ -138,7 +139,7 @@ def get_classifier_path(model_id):
 
 
 def create_classifier(model_id):
-    clf = RandomForestClassifier(random_state=42, n_jobs=2)
+    clf = SGDClassifier(loss="log", class_weight={0: 0.05, 1: 0.95})
     clf_path = get_classifier_path(model_id)
     dump(clf, clf_path)
 
@@ -147,21 +148,23 @@ def update_classifier(link_and_label, model_id):
     clf_path = get_classifier_path(model_id)
     clf = load(clf_path)
     is_link = link_and_label["isLink"]
-    source_page = link_and_label["link"]["sourcePage"]
-    source_id = link_and_label["link"]["sourceId"]
+    source_page = link_and_label["link"]["source"]["page"]
+    source_id = link_and_label["link"]["source"]["element"]["id"]
     target_page = link_and_label["link"]["target"]
     source_page_embedding = get_figma_embedding(
         source_page, ui_model, screen_model, layout_model, bert
     )
     source_embedding = [
         component_embedding
-        for component_id, component_embedding in source_page_embedding["components"]
+        for component_id, component_embedding in source_page_embedding[
+            "components"
+        ].items()
         if component_id == source_id
     ][0]
     target_embedding = get_figma_embedding(
         target_page, ui_model, screen_model, layout_model, bert
-    )
-    X = np.array(source_embedding.tolist() + target_embedding.tolist())
+    )["screen"]
+    X = np.array([source_embedding.tolist() + target_embedding.tolist()])
     y = np.array([(int(is_link))])
     clf.partial_fit(X, y, classes=[0, 1])
     dump(clf, clf_path)
