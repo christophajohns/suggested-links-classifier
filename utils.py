@@ -2,6 +2,7 @@ from joblib import dump, load
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
+from torch import cosine_similarity
 from simplifiedscreen2vec.simplified_embedding import (
     get_figma_component_embedding,
     get_figma_embedding,
@@ -23,6 +24,7 @@ from constants import (
     HEIGHT,
     CHILDREN,
 )
+from tqdm import tqdm
 
 bert = load_bert()
 ui_model = load_ui_model(
@@ -34,6 +36,7 @@ screen_model = load_screen_model(
 layout_model = load_layout_model(
     "../Screen2Vec/simplifiedscreen2vec/layout_encoder.ep800"
 )
+clickable_classifier = load("classifiers/clickable.joblib")
 
 
 def validate_data(pages_data: dict):
@@ -73,6 +76,24 @@ def validate_data(pages_data: dict):
             validate_node(child)
 
 
+def get_element_by_id(element_id, page):
+    """
+    Returns the element from the specified page tree (DFS search)
+    """
+    stack = []
+    stack.append(page)
+
+    while len(stack) > 0:
+        top_element = stack.pop()
+        if top_element is not None:
+            if top_element["id"] == element_id:
+                return top_element
+            else:
+                if "children" in top_element:
+                    for child in top_element["children"]:
+                        stack.append(child)
+
+
 def qualifications(pages_data, classifier):
     pages = pages_data["pages"]
     embeddings = [
@@ -80,14 +101,22 @@ def qualifications(pages_data, classifier):
         for page in pages
     ]
     targets = [
-        {"id": pages[page_index]["id"], "embedding": embedding["screen"].tolist()}
+        {"id": pages[page_index]["id"], "embedding": embedding}
         for page_index, embedding in enumerate(embeddings)
     ]
     sources = [
         {
-            "id": component_id,
-            "parent_id": pages[page_index]["id"],
-            "embedding": component_embedding.tolist(),
+            "element": {
+                "id": component_id,
+                "bounds": get_element_by_id(component_id, pages[page_index])["bounds"],
+                "embedding": component_embedding,
+            },
+            "page": {
+                "id": pages[page_index]["id"],
+                "width": pages[page_index]["width"],
+                "height": pages[page_index]["height"],
+                "embedding": embedding,
+            },
         }
         for page_index, embedding in enumerate(embeddings)
         for component_id, component_embedding in embedding["components"].items()
@@ -98,25 +127,78 @@ def qualifications(pages_data, classifier):
     ]
     penalty_score = len(sources) * len(targets) * -1
     qualifications = []
-    for source in sources:
+    for source in tqdm(sources):
         source_target_scores = []
         for target in targets:
-            link_probability = get_link_probability(
+            link_probability, info = get_link_probability(
                 source, target, penalty_score, classifier
             )
             source_target_scores.append(
-                {"source": source, "target": target, "probability": link_probability}
+                {
+                    "source": {"id": source["element"]["id"]},
+                    "target": {"id": target["id"]},
+                    "probability": link_probability,
+                    "info": info,
+                }
             )
         qualifications.append(source_target_scores)
     return {"qualifications": qualifications}
 
 
+def get_element_is_clickable_probability(ui):
+    """
+    Get the probability that a UI element is clickable
+    """
+    ui_element = ui["element"]
+    ui_element_bounds = ui_element["bounds"]
+    parent_page = ui["page"]
+    parent_page_width = parent_page["width"]
+    parent_page_height = parent_page["height"]
+    relative_x = ui_element_bounds["x"] / parent_page_width
+    relative_y = ui_element_bounds["y"] / parent_page_height
+    relative_width = ui_element_bounds["width"] / parent_page_width
+    relative_height = ui_element_bounds["height"] / parent_page_height
+    sample = (
+        ui_element["embedding"].tolist()
+        + parent_page["embedding"]["screen"].tolist()
+        + [relative_x]
+        + [relative_y]
+        + [relative_width]
+        + [relative_height]
+    )
+    prediction = clickable_classifier.predict_proba([sample])[0]
+    is_clickable_probability = prediction[1]
+    return is_clickable_probability
+
+
+def get_element_page_text_similarity(ui_embedding, page_text_embedding):
+    """
+    Get the cosine similarity between the UI embedding and page text embedding vectors
+    """
+    cos_similarity = cosine_similarity(ui_embedding, page_text_embedding, dim=0)
+    similarity_score = cos_similarity.item()
+    return similarity_score
+
+
 def get_link_probability(
-    source, target, penalty_score, classifier, qualification_threshold=0.5
+    source,
+    target,
+    penalty_score,
+    classifier,
+    qualification_threshold=0.5,
 ):
-    if source["parent_id"] == target["id"]:
-        return penalty_score
-    sample = source["embedding"] + target["embedding"]
+    if source["page"]["id"] == target["id"]:
+        return penalty_score, {}
+    source_is_clickable_probability = get_element_is_clickable_probability(source)
+    source_target_text_similarity = get_element_page_text_similarity(
+        source["element"]["embedding"], target["embedding"]["text"]
+    )
+    target_layout = target["embedding"]["layout"].tolist()
+    sample = (
+        [source_is_clickable_probability]
+        + [source_target_text_similarity]
+        # + target_layout
+    )
     prediction = classifier.predict_proba([sample])[0]
     link_probability = prediction[1]
     # print(
@@ -127,11 +209,15 @@ def get_link_probability(
     #         "proba": link_probability,
     #     }
     # )
-    return (
+    score = (
         link_probability
         if link_probability > qualification_threshold
         else link_probability - qualification_threshold
     )
+    return score, {
+        "clickableProbability": source_is_clickable_probability,
+        "sourceTargetTextSimilarity": source_target_text_similarity,
+    }
 
 
 def get_classifier_path(model_id):

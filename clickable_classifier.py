@@ -52,7 +52,7 @@ clf = BalancedBaggingClassifier(
     n_estimators=10,
     random_state=42,
     n_jobs=4,
-    verbose=1,
+    # verbose=1,
 )
 # clf = BalancedRandomForestClassifier(random_state=42, n_jobs=4, verbose=1)
 clf.fit(X, Y)
