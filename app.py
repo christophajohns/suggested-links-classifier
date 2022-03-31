@@ -6,6 +6,7 @@ from os.path import exists
 
 app = Flask(__name__)
 static_classifier = load("classifiers/static.joblib")
+static_clickable_classifier = load("classifiers/clickable.joblib")
 
 
 @app.route("/")
@@ -22,7 +23,9 @@ def index():
 def get_qualifications():
     try:
         validate_data(request.json)
-        return qualifications(request.json, static_classifier)
+        return qualifications(
+            request.json, static_classifier, static_clickable_classifier
+        )
     except Exception as error:
         print(error)
         abort(400)
@@ -31,16 +34,26 @@ def get_qualifications():
 @app.route("/model/<model_id>/qualifications", methods=["POST"])
 def get_qualifications_from_interactive_model(model_id):
     classifier_path = f"classifiers/{model_id}.joblib"
+    clickable_classifier_path = f"classifiers/{model_id}_clickable.joblib"
     try:
         validate_data(request.json)
-        if exists(classifier_path):
+        if exists(classifier_path) and exists(clickable_classifier_path):
             interactive_classifier = load(classifier_path)
+            interactive_clickable_classifier = load(clickable_classifier_path)
             try:
-                return qualifications(request.json, interactive_classifier)
+                return qualifications(
+                    request.json,
+                    interactive_classifier,
+                    interactive_clickable_classifier,
+                )
             except NotFittedError as e:
-                return qualifications(request.json, static_classifier)
+                return qualifications(
+                    request.json, static_classifier, static_clickable_classifier
+                )
         create_classifier(model_id)
-        return qualifications(request.json, static_classifier)
+        return qualifications(
+            request.json, static_classifier, static_clickable_classifier
+        )
     except Exception as error:
         print(error)
         abort(400)

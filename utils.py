@@ -1,3 +1,4 @@
+from copy import copy
 from joblib import dump, load
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
@@ -94,7 +95,7 @@ def get_element_by_id(element_id, page):
                         stack.append(child)
 
 
-def qualifications(pages_data, classifier):
+def qualifications(pages_data, classifier, clickable_classifier):
     pages = pages_data["pages"]
     embeddings = [
         get_figma_embedding(page, ui_model, screen_model, layout_model, bert)
@@ -131,7 +132,7 @@ def qualifications(pages_data, classifier):
         source_target_scores = []
         for target in targets:
             link_probability, info = get_link_probability(
-                source, target, penalty_score, classifier
+                source, target, penalty_score, classifier, clickable_classifier
             )
             source_target_scores.append(
                 {
@@ -145,27 +146,11 @@ def qualifications(pages_data, classifier):
     return {"qualifications": qualifications}
 
 
-def get_element_is_clickable_probability(ui):
+def get_element_is_clickable_probability(ui, clickable_classifier):
     """
     Get the probability that a UI element is clickable
     """
-    ui_element = ui["element"]
-    ui_element_bounds = ui_element["bounds"]
-    parent_page = ui["page"]
-    parent_page_width = parent_page["width"]
-    parent_page_height = parent_page["height"]
-    relative_x = ui_element_bounds["x"] / parent_page_width
-    relative_y = ui_element_bounds["y"] / parent_page_height
-    relative_width = ui_element_bounds["width"] / parent_page_width
-    relative_height = ui_element_bounds["height"] / parent_page_height
-    sample = (
-        ui_element["embedding"].tolist()
-        + parent_page["embedding"]["screen"].tolist()
-        + [relative_x]
-        + [relative_y]
-        + [relative_width]
-        + [relative_height]
-    )
+    sample = get_ui_element_features(ui)
     prediction = clickable_classifier.predict_proba([sample])[0]
     is_clickable_probability = prediction[1]
     return is_clickable_probability
@@ -185,15 +170,18 @@ def get_link_probability(
     target,
     penalty_score,
     classifier,
+    clickable_classifier,
     qualification_threshold=0.5,
 ):
     if source["page"]["id"] == target["id"]:
         return penalty_score, {}
-    source_is_clickable_probability = get_element_is_clickable_probability(source)
+    source_is_clickable_probability = get_element_is_clickable_probability(
+        source, clickable_classifier
+    )
     source_target_text_similarity = get_element_page_text_similarity(
         source["element"]["embedding"], target["embedding"]["text"]
     )
-    target_layout = target["embedding"]["layout"].tolist()
+    # target_layout = target["embedding"]["layout"].tolist()
     sample = (
         [source_is_clickable_probability]
         + [source_target_text_similarity]
@@ -220,37 +208,108 @@ def get_link_probability(
     }
 
 
-def get_classifier_path(model_id):
+def get_link_classifier_path(model_id):
     return f"classifiers/{model_id}.joblib"
 
 
-def create_classifier(model_id):
-    clf = SGDClassifier(loss="log", class_weight={0: 0.05, 1: 0.95})
-    clf_path = get_classifier_path(model_id)
+def get_clickable_classifier_path(model_id):
+    return f"classifiers/{model_id}_clickable.joblib"
+
+
+def create_link_classifier(model_id):
+    clf = SGDClassifier(loss="log")
+    clf_path = get_link_classifier_path(model_id)
     dump(clf, clf_path)
 
 
-def update_classifier(link_and_label, model_id):
-    clf_path = get_classifier_path(model_id)
-    clf = load(clf_path)
-    is_link = link_and_label["isLink"]
-    source_page = link_and_label["link"]["source"]["page"]
-    source_id = link_and_label["link"]["source"]["element"]["id"]
-    target_page = link_and_label["link"]["target"]
+def create_clickable_classifier(model_id):
+    clf = SGDClassifier(loss="log")
+    clf_path = get_clickable_classifier_path(model_id)
+    dump(clf, clf_path)
+
+
+def create_classifier(model_id):
+    create_clickable_classifier(model_id)
+    create_link_classifier(model_id)
+
+
+def construct_source_dict(source_data):
     source_page_embedding = get_figma_embedding(
-        source_page, ui_model, screen_model, layout_model, bert
+        source_data["page"], ui_model, screen_model, layout_model, bert
     )
-    source_embedding = [
+    source_element_embedding = [
         component_embedding
         for component_id, component_embedding in source_page_embedding[
             "components"
         ].items()
-        if component_id == source_id
+        if component_id == source_data["element"]["id"]
     ][0]
+    source = copy(source_data)
+    source["element"]["embedding"] = source_element_embedding
+    source["page"]["embedding"] = source_page_embedding
+    return source
+
+
+def construct_target_dict(target_data):
     target_embedding = get_figma_embedding(
-        target_page, ui_model, screen_model, layout_model, bert
-    )["screen"]
-    X = np.array([source_embedding.tolist() + target_embedding.tolist()])
+        target_data, ui_model, screen_model, layout_model, bert
+    )
+    return {"page": target_data, "embedding": target_embedding}
+
+
+def update_link_classifier(source, target, is_link, model_id):
+    clf_path = get_link_classifier_path(model_id)
+    clf = load(clf_path)
+    clickable_clf_path = get_clickable_classifier_path(model_id)
+    clickable_clf = load(clickable_clf_path)
+    source_is_clickable_probability = get_element_is_clickable_probability(
+        source, clickable_clf
+    )
+    source_target_text_similarity = get_element_page_text_similarity(
+        source["element"]["embedding"], target["embedding"]["text"]
+    )
+    X = np.array([[source_is_clickable_probability] + [source_target_text_similarity]])
     y = np.array([(int(is_link))])
     clf.partial_fit(X, y, classes=[0, 1])
     dump(clf, clf_path)
+
+
+def get_ui_element_features(ui):
+    ui_element = ui["element"]
+    ui_element_bounds = ui_element["bounds"]
+    parent_page = ui["page"]
+    parent_page_width = parent_page["width"]
+    parent_page_height = parent_page["height"]
+    relative_x = ui_element_bounds["x"] / parent_page_width
+    relative_y = ui_element_bounds["y"] / parent_page_height
+    relative_width = ui_element_bounds["width"] / parent_page_width
+    relative_height = ui_element_bounds["height"] / parent_page_height
+    features = (
+        ui_element["embedding"].tolist()
+        + parent_page["embedding"]["screen"].tolist()
+        + [relative_x]
+        + [relative_y]
+        + [relative_width]
+        + [relative_height]
+    )
+    return features
+
+
+def update_clickable_classifier(source, model_id):
+    clf_path = get_clickable_classifier_path(model_id)
+    clf = load(clf_path)
+    features = get_ui_element_features(source)
+    X = np.array([features])
+    y = np.array([1])
+    clf.partial_fit(X, y, classes=[0, 1])
+    dump(clf, clf_path)
+
+
+def update_classifier(link_and_label, model_id):
+    is_link = link_and_label["isLink"]
+    source_data = link_and_label["link"]["source"]
+    target_data = link_and_label["link"]["target"]
+    source = construct_source_dict(source_data)
+    target = construct_target_dict(target_data)
+    update_clickable_classifier(source, model_id)
+    update_link_classifier(source, target, is_link, model_id)
