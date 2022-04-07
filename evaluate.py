@@ -34,7 +34,7 @@ from imblearn.ensemble import BalancedRandomForestClassifier, BalancedBaggingCla
 from imblearn.metrics import sensitivity_score
 
 
-with open("training_screen2vec.npy", "rb") as f:
+with open("training.npy", "rb") as f:
     X = np.load(f)
     Y = np.load(f)
 
@@ -60,6 +60,7 @@ scoring = {
 }
 
 dummy_clf = DummyClassifier(strategy="most_frequent")
+dummy_stratified_clf = DummyClassifier(strategy="stratified")
 lr_clf = make_pipeline(linear_scaler, SGDClassifier(loss="log"))
 rf_clf = RandomForestClassifier(random_state=42, n_jobs=2)
 lr_balanced_clf = make_pipeline(
@@ -107,7 +108,8 @@ rf_adasyn_clf = make_pipeline_with_sampler(
 )
 
 classifiers = [
-    {"classifier": dummy_clf},
+    {"classifier": dummy_clf, "name": "DummyClassifier (most frequent)"},
+    {"classifier": dummy_stratified_clf, "name": "DummyClassifier (stratified)"},
     {"classifier": lr_clf, "name": "SGDClassifier"},
     {"classifier": rf_clf},
     {"classifier": lr_balanced_clf, "name": "SGDClassifier (balanced)"},

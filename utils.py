@@ -1,3 +1,7 @@
+import logging
+
+logging.basicConfig(level=logging.DEBUG, filename="classifier_app_logs.log")
+
 from copy import copy
 from joblib import dump, load
 import numpy as np
@@ -38,6 +42,7 @@ layout_model = load_layout_model(
     "../Screen2Vec/simplifiedscreen2vec/layout_encoder.ep800"
 )
 clickable_classifier = load("classifiers/clickable.joblib")
+pca = load("pca.joblib")
 
 
 def validate_data(pages_data: dict):
@@ -143,6 +148,7 @@ def qualifications(pages_data, classifier, clickable_classifier):
                 }
             )
         qualifications.append(source_target_scores)
+    logging.debug("%s", {"qualifications": qualifications})
     return {"qualifications": qualifications}
 
 
@@ -181,12 +187,14 @@ def get_link_probability(
     source_target_text_similarity = get_element_page_text_similarity(
         source["element"]["embedding"], target["embedding"]["text"]
     )
+    source_target_text_similarity = pca.transform(
+        [
+            source["element"]["embedding"].detach().numpy()
+            - target["embedding"]["text"].detach().numpy()
+        ]
+    )[0].tolist()
     # target_layout = target["embedding"]["layout"].tolist()
-    sample = (
-        [source_is_clickable_probability]
-        + [source_target_text_similarity]
-        # + target_layout
-    )
+    sample = [source_is_clickable_probability] + source_target_text_similarity
     prediction = classifier.predict_proba([sample])[0]
     link_probability = prediction[1]
     # print(
